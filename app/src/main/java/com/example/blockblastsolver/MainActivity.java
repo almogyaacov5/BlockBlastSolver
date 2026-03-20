@@ -14,15 +14,12 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 
-import java.io.IOException;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
     private ImageView ivScreenshot;
     private TextView tvSolution;
-
-    // מנגנון חדיש באנדרואיד לקבלת תוצאה (תמונה) מפעילות אחרת
-    // בתוך MainActivity.java, נעדכן את ה-Launcher:
 
     private final ActivityResultLauncher<Intent> imagePickerLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -30,18 +27,32 @@ public class MainActivity extends AppCompatActivity {
                 if (result.getResultCode() == RESULT_OK && result.getData() != null) {
                     Uri imageUri = result.getData().getData();
                     try {
-                        Bitmap bitmap = MediaStore.Images.Media.getBitmap(this.getContentResolver(), imageUri);
+                        Bitmap bitmap = MediaStore.Images.Media.getBitmap(
+                                this.getContentResolver(), imageUri);
                         ivScreenshot.setImageBitmap(bitmap);
                         tvSolution.setText("מנתח את הלוח...");
 
-                        // מנתח ומקבל מערך של הלוח עם הפתרון
-                        int[] solvedBoard = ScreenshotAnalyzer.analyzeAndSolveVisual(bitmap);
+                        // שלב 1: קריאת הלוח והצורות מהתמונה
+                        int[] flatBoard = ScreenshotAnalyzer.extractBoard(bitmap);
+                        List<Shape> shapes = ScreenshotAnalyzer.extractShapes(bitmap);
 
-                        // פותח את מסך הפתרון ומעביר אליו את המערך
+                        // שלב 2: חישוב הפתרון האופטימלי
+                        Solver.SolverResult solverResult = Solver.solveAllThree(flatBoard, shapes);
+
+                        if (!solverResult.success || solverResult.steps.isEmpty()) {
+                            tvSolution.setText("לא נמצא פתרון");
+                            Toast.makeText(this, "לא נמצא פתרון", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+
+                        // שלב 3: שליחת כל שלב למסך הפתרון
                         Intent intent = new Intent(MainActivity.this, SolutionActivity.class);
-                        intent.putExtra("SOLVED_BOARD", solvedBoard);
-                        startActivity(intent); // מעבר למסך החדש!
-
+                        List<int[]> steps = solverResult.steps;
+                        intent.putExtra("STEP_COUNT", steps.size());
+                        for (int i = 0; i < steps.size(); i++) {
+                            intent.putExtra("STEP_" + i, steps.get(i));
+                        }
+                        startActivity(intent);
                         tvSolution.setText("הפתרון מוכן!");
 
                     } catch (Exception e) {
@@ -62,8 +73,8 @@ public class MainActivity extends AppCompatActivity {
         tvSolution = findViewById(R.id.tvSolution);
 
         btnUpload.setOnClickListener(v -> {
-            // פתיחת חלונית לבחירת תמונה (צילום מסך)
-            Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+            Intent intent = new Intent(Intent.ACTION_PICK,
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
             imagePickerLauncher.launch(intent);
         });
     }

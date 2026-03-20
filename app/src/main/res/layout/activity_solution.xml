@@ -11,8 +11,8 @@
         android:id="@+id/tvStepTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="הפתרון המומלץ"
-        android:textSize="26sp"
+        android:text="שלב 1"
+        android:textSize="24sp"
         android:textStyle="bold"
         android:textColor="#333333"
         android:layout_marginBottom="8dp" />
@@ -20,11 +20,11 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="הנח את הבלוק באזור המסומן בירוק"
-        android:textSize="16sp"
-        android:layout_marginBottom="24dp" />
+        android:text="ירוק = הנח כאן | כתום = בלוק קיים"
+        android:textSize="14sp"
+        android:textColor="#666666"
+        android:layout_marginBottom="16dp" />
 
-    <!-- הלוח הויזואלי -->
     <GridView
         android:id="@+id/gridSolutionBoard"
         android:layout_width="match_parent"
@@ -37,7 +37,6 @@
         android:stretchMode="columnWidth"
         android:gravity="center"/>
 
-    <!-- כפתורי ניווט -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -47,25 +46,27 @@
 
         <Button
             android:id="@+id/btnPrev"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
+            android:layout_weight="1"
             android:layout_height="wrap_content"
-            android:text="הקודם"
+            android:text="◀ הקודם"
             android:layout_marginEnd="8dp"/>
 
         <Button
             android:id="@+id/btnNext"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
+            android:layout_weight="1"
             android:layout_height="wrap_content"
-            android:text="הבא"
+            android:text="הבא ▶"
             android:layout_marginStart="8dp"/>
 
     </LinearLayout>
 
     <Button
         android:id="@+id/btnBack"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="חזור למסך הראשי"
-        android:layout_marginTop="16dp"/>
+        android:layout_marginTop="8dp"/>
 
 </LinearLayout>
