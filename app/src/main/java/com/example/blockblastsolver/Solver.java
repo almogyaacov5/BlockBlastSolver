@@ -6,7 +6,7 @@ import java.util.List;
 public class Solver {
 
     public static class SolverResult {
-        public List<int[]> steps; // כל שלב הוא לוח שלם של 64 תאים
+        public List<int[]> steps; // כל שלב הוא מערך שטוח של 64 תאים
         public boolean success;
 
         public SolverResult() {
@@ -17,16 +17,28 @@ public class Solver {
 
     // ערכים אפשריים בלוח:
     // 0 = ריק
-    // 1 = בלוק קיים
-    // 2 = בלוק חדש שהונח (ירוק)
-    // 3 = תא שנמחק בגלל שורה/עמודה מלאה (כחול/לבן)
+    // 1 = קיים (לא שונה)
+    // 2 = חדש (הונח בשלב זה)
+    // 3 = נמחק (שורה/עמודה שנוקתה)
+
+    /**
+     * getBestMove — wrapper ל-solveAllThree.
+     * זוהי המתודה שנקראת מ-ScreenshotAnalyzer.
+     */
+    public static int[] getBestMove(int[] flatBoard, List<Shape> shapes) {
+        SolverResult result = solveAllThree(flatBoard, shapes);
+        if (result.success && !result.steps.isEmpty()) {
+            return result.steps.get(0); // מחזיר את השלב הראשון
+        }
+        return flatBoard; // אם אין פתרון, מחזיר את הלוח הנוכחי
+    }
 
     public static SolverResult solveAllThree(int[] flatBoard, List<Shape> shapes) {
         SolverResult result = new SolverResult();
 
         int[][] board = flatTo2D(flatBoard);
 
-        // מריצים DFS על 3 הבלוקים ברצף
+        // מחפש את הסדר האופטימלי להניח את 3 הצורות
         List<int[][]> bestSequence = new ArrayList<>();
         int[] bestScore = {Integer.MAX_VALUE};
 
@@ -35,13 +47,13 @@ public class Solver {
         if (!bestSequence.isEmpty()) {
             result.success = true;
 
-            // בנה את הלוחות לכל שלב
+            // בונה את רצף השלבים לתצוגה
             int[][] currentBoard = flatTo2D(flatBoard);
 
             for (int step = 0; step < bestSequence.size(); step++) {
                 int[][] stepBoard = bestSequence.get(step);
 
-                // בנה לוח תצוגה: מה היה + מה נוסף + מה נמחק
+                // בונה displayBoard עם ערכים 0/1/2/3
                 int[] displayBoard = new int[64];
                 for (int r = 0; r < 8; r++) {
                     for (int c = 0; c < 8; c++) {
@@ -49,11 +61,11 @@ public class Solver {
                         int next = stepBoard[r][c];
 
                         if (prev == 1 && next == 1) {
-                            displayBoard[r * 8 + c] = 1; // בלוק קיים
+                            displayBoard[r * 8 + c] = 1; // קיים ולא שונה
                         } else if (prev == 0 && next == 1) {
-                            displayBoard[r * 8 + c] = 2; // בלוק חדש (ירוק)
+                            displayBoard[r * 8 + c] = 2; // חדש (הונח)
                         } else if (prev == 1 && next == 0) {
-                            displayBoard[r * 8 + c] = 3; // נמחק (שורה/עמודה מלאה)
+                            displayBoard[r * 8 + c] = 3; // נמחק (שורה/עמודה נוקתה)
                         } else {
                             displayBoard[r * 8 + c] = 0; // ריק
                         }
@@ -102,7 +114,7 @@ public class Solver {
             }
         }
 
-        // אם לא ניתן להניח את הצורה, ממשיכים לבאה
+        // אם לא ניתן להניח את הצורה, ממשיכים לצורה הבאה
         if (!placed) {
             dfs(board, shapes, shapeIndex + 1, currentSequence, bestSequence, bestScore);
         }
@@ -130,7 +142,7 @@ public class Solver {
             }
         }
 
-        // בדיקה וניקוי שורות ועמודות מלאות
+        // בודק שורות ועמודות מלאות לניקוי
         boolean[] clearRow = new boolean[8];
         boolean[] clearCol = new boolean[8];
 

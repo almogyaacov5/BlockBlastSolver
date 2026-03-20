@@ -12,7 +12,7 @@ public class ScreenshotAnalyzer {
         int width = bitmap.getWidth();
         int height = bitmap.getHeight();
 
-        // 1. קריאת הלוח (כמו מקודם)
+        // 1. קריאת הלוח (כמו קודם)
         int boardStartX = (int) (width * 0.05);
         int boardWidth = (int) (width * 0.90);
         int boardStartY = (int) (height * 0.22);
@@ -34,16 +34,20 @@ public class ScreenshotAnalyzer {
             }
         }
 
-        // 2. קריאת 3 הצורות שלמטה (אזור תחתון של המסך)
+        // 2. חילוץ 3 הצורות מהחלק התחתון של המסך
         List<Shape> shapes = extractShapesFromBottom(bitmap);
 
-        // אם לא זוהו צורות טובות בגלל איכות התמונה, נכניס צורת גיבוי בסיסית כדי שלא יקרוס
+        // אם לא זוהתה אף צורה, מוסיפים צורה ברירת מחדל (1x1)
         if (shapes.isEmpty()) {
             shapes.add(new Shape(new int[][]{{1}}));
         }
 
-        // 3. שליחה לאלגוריתם למציאת המהלך הטוב ביותר
-        return Solver.getBestMove(flatBoard, shapes);
+        // 3. ✅ תוקן: קריאה ל-solveAllThree (המתודה הנכונה) וחזרה של הצעד הראשון
+        Solver.SolverResult result = Solver.solveAllThree(flatBoard, shapes);
+        if (result.success && !result.steps.isEmpty()) {
+            return result.steps.get(0);
+        }
+        return flatBoard; // אין פתרון — מחזיר את הלוח הנוכחי
     }
 
     private static List<Shape> extractShapesFromBottom(Bitmap bitmap) {
@@ -51,18 +55,18 @@ public class ScreenshotAnalyzer {
         int width = bitmap.getWidth();
         int height = bitmap.getHeight();
 
-        // הצורות נמצאות בערך בין 75% ל-90% מגובה המסך
+        // האזור של הצורות: 72% - 95% מהגובה
         int startY = (int) (height * 0.72);
         int endY = (int) (height * 0.95);
 
-        // נחלק את הרוחב ל-3 אזורים (ל-3 הצורות)
+        // חלוקה ל-3 חלקים שווים לרוחב
         int sectionWidth = width / 3;
 
         for (int i = 0; i < 3; i++) {
             int startX = i * sectionWidth;
             int endX = startX + sectionWidth;
 
-            // חיפוש הגבולות (Bounding Box) של הצבע באזור הזה
+            // מצא את ה-Bounding Box של הצורה בחלק זה
             int minX = width, maxX = 0, minY = height, maxY = 0;
             boolean foundColor = false;
 
@@ -79,26 +83,23 @@ public class ScreenshotAnalyzer {
                 }
             }
 
-            // אם מצאנו צורה באזור הזה
             if (foundColor) {
-                // המרת הפיקסלים למטריצה (מניחים שגודל קובייה קטנה הוא בערך 30-40 פיקסלים)
                 int shapeW = maxX - minX;
                 int shapeH = maxY - minY;
 
-                // בבלוק בלאסט, צורה היא מקסימום 5x5. נמצא את כמות העמודות/שורות היחסית
+                // גודל בלוק אומד: מחלקים ל-5, מינימום 10 פיקסל
                 int blockSize = Math.max(shapeW, shapeH) / 5;
-                if (blockSize < 10) blockSize = 10; // הגנה
+                if (blockSize < 10) blockSize = 10;
 
                 int cols = Math.round((float) shapeW / blockSize) + 1;
                 int rows = Math.round((float) shapeH / blockSize) + 1;
 
-                // הגנה מגלישה
-                if(rows > 5) rows = 5;
-                if(cols > 5) cols = 5;
+                // הגבלה ל-5x5
+                if (rows > 5) rows = 5;
+                if (cols > 5) cols = 5;
 
                 int[][] grid = new int[rows][cols];
 
-                // דוגמים שוב לפי הרשת הפנימית של הצורה
                 for (int r = 0; r < rows; r++) {
                     for (int c = 0; c < cols; c++) {
                         int pX = minX + (c * blockSize) + (blockSize / 2);

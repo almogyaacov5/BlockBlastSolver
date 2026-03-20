@@ -8,6 +8,7 @@
     android:background="#FAFAFA">
 
     <TextView
+        android:id="@+id/tvStepTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="הפתרון המומלץ"
@@ -23,7 +24,6 @@
         android:textSize="16sp"
         android:layout_marginBottom="24dp" />
 
-
     <!-- הלוח הויזואלי -->
     <GridView
         android:id="@+id/gridSolutionBoard"
@@ -37,12 +37,35 @@
         android:stretchMode="columnWidth"
         android:gravity="center"/>
 
+    <!-- כפתורי ניווט -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:layout_marginTop="16dp">
+
+        <Button
+            android:id="@+id/btnPrev"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="הקודם"
+            android:layout_marginEnd="8dp"/>
+
+        <Button
+            android:id="@+id/btnNext"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="הבא"
+            android:layout_marginStart="8dp"/>
+
+    </LinearLayout>
 
     <Button
         android:id="@+id/btnBack"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="חזור למסך הראשי"
-        android:layout_marginTop="32dp"/>
+        android:layout_marginTop="16dp"/>
 
 </LinearLayout>
