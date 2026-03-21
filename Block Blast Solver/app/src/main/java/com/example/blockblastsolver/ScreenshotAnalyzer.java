@@ -23,7 +23,7 @@ public class ScreenshotAnalyzer {
 
     private static final String GEMINI_API_KEY = BuildConfig.GEMINI_API_KEY;
     private static final String GEMINI_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent"
                     + "?key=" + GEMINI_API_KEY;
 
 
@@ -47,17 +47,47 @@ public class ScreenshotAnalyzer {
             Log.d("Gemini", "Resized to: " + newW + "x" + newH);
 
 
-            String prompt = "This is a Block Blast puzzle game screenshot.\n"
-                    + "TASK 1 - Read the 8x8 board (upper dark grid):\n"
-                    + "- The board has 8 columns and 8 rows.\n"
-                    + "- 1 = colored block, 0 = empty dark cell.\n\n"
-                    + "TASK 2 - Read the 3 pieces at the bottom of the screen:\n"
-                    + "- There are exactly 3 separate piece shapes below the board (Left, Center, Right).\n"
-                    + "- Carefully look at each piece and determine its exact grid size (rows and columns).\n"
-                    + "- Convert each piece into a 2D array of 1s (colored block) and 0s (empty space in the grid bounds).\n"
-                    + "- Trim any completely empty rows or columns around the pieces.\n\n"
-                    + "Return ONLY this valid JSON format, no markdown formatting, no explanations:\n"
-                    + "{\"board\":[[8 values],...8 rows total...], \"pieces\":[left_piece_2d_array, center_piece_2d_array, right_piece_2d_array]}";
+            String prompt =
+                    "You are analyzing a Block Blast mobile game screenshot.\n\n" +
+                            "BOARD RULES:\n" +
+                            "- The board is EXACTLY 8 columns x 8 rows (8x8 grid).\n" +
+                            "- Output a 2D array of exactly 8 rows, each with exactly 8 values.\n" +
+                            "- 1 = a colored block exists in that cell.\n" +
+                            "- 0 = the cell is empty (black/dark background).\n" +
+                            "- Carefully count every row and column — do not skip or merge cells.\n\n" +
+                            "PIECES RULES:\n" +
+                            "- There are EXACTLY 3 pieces shown at the bottom of the screen.\n" +
+                            "- Each piece is a 2D array representing its shape.\n" +
+                            "- Use only the minimum bounding box for each piece (no extra empty rows or columns).\n" +
+                            "- 1 = filled cell, 0 = empty cell within the bounding box.\n" +
+                            "- Piece shapes can be 1x1 up to 5x5. Common shapes: 2x2, 3x3, L-shape, T-shape, line.\n" +
+                            "- A 2x2 square piece has exactly 2 rows and 2 columns — NOT 3 rows.\n" +
+                            "- Count rows and columns pixel by pixel, do not guess by shape similarity.\n\n" +
+                            "IMPORTANT:\n" +
+                            "- Do NOT include markdown, code blocks, or explanation.\n" +
+                            "- Return ONLY raw valid JSON, nothing else.\n" +
+                            "- The JSON must follow this exact structure:\n\n" +
+                            "{\n" +
+                            "  \"board\": [\n" +
+                            "    [0,0,0,0,0,0,0,0],\n" +
+                            "    [0,0,0,0,0,0,0,0],\n" +
+                            "    [0,0,0,0,0,0,0,0],\n" +
+                            "    [0,0,0,0,0,0,0,0],\n" +
+                            "    [0,0,0,0,0,0,0,0],\n" +
+                            "    [0,0,0,0,0,0,0,0],\n" +
+                            "    [0,0,0,0,0,0,0,0],\n" +
+                            "    [0,0,0,0,0,0,0,0]\n" +
+                            "  ],\n" +
+                            "  \"pieces\": [\n" +
+                            "    [[1,1],[1,1]],\n" +
+                            "    [[1,1,1],[1,1,1],[1,1,1]],\n" +
+                            "    [[1,1,1],[1,1,1],[1,1,1]]\n" +
+                            "  ]\n" +
+                            "}\n\n" +
+                            "Now analyze the provided screenshot and return the JSON.";
+
+
+
 
 
             JSONObject textPart = new JSONObject();
@@ -86,8 +116,8 @@ public class ScreenshotAnalyzer {
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setDoOutput(true);
-            conn.setConnectTimeout(30000);
-            conn.setReadTimeout(30000);
+            conn.setConnectTimeout(5000);  // 8 שניות לחיבור
+            conn.setReadTimeout(10000);    // 15 שניות לתשובה
 
             OutputStream os = conn.getOutputStream();
             os.write(requestBody.toString().getBytes(StandardCharsets.UTF_8));
@@ -132,7 +162,6 @@ public class ScreenshotAnalyzer {
         try {
             JSONObject json = new JSONObject(jsonText);
 
-            // פירוק הלוח
             JSONArray boardJson = json.getJSONArray("board");
             int[] flatBoard = new int[64];
             for (int r = 0; r < 8; r++) {
@@ -142,20 +171,38 @@ public class ScreenshotAnalyzer {
                 }
             }
 
-            // פירוק הצורות
             JSONArray piecesJson = json.getJSONArray("pieces");
             List<Shape> shapes = new ArrayList<>();
+
             for (int i = 0; i < piecesJson.length(); i++) {
                 JSONArray pieceJson = piecesJson.getJSONArray(i);
                 int rows = pieceJson.length();
                 int cols = pieceJson.getJSONArray(0).length();
                 int[][] grid = new int[rows][cols];
+
+                boolean allOnes = true;
                 for (int r = 0; r < rows; r++) {
                     JSONArray row = pieceJson.getJSONArray(r);
                     for (int c = 0; c < cols; c++) {
                         grid[r][c] = row.getInt(c);
+                        if (grid[r][c] != 1) allOnes = false;
                     }
                 }
+
+                // תיקון: אם הצורה כולה מלאה ב-1 אבל אינה ריבוע,
+                // וההפרש בין שורות לעמודות הוא 1 — נעגל לריבוע הקטן יותר
+                if (allOnes && rows != cols && Math.abs(rows - cols) == 1) {
+                    int squareSize = Math.min(rows, cols);
+                    Log.d("Gemini", "Piece " + i + ": fixing " + rows + "x" + cols
+                            + " -> " + squareSize + "x" + squareSize);
+                    grid = new int[squareSize][squareSize];
+                    for (int r = 0; r < squareSize; r++)
+                        for (int c = 0; c < squareSize; c++)
+                            grid[r][c] = 1;
+                    rows = squareSize;
+                    cols = squareSize;
+                }
+
                 shapes.add(new Shape(grid));
                 Log.d("Gemini", "Piece " + i + ": " + rows + "x" + cols);
             }
@@ -167,6 +214,7 @@ public class ScreenshotAnalyzer {
             return null;
         }
     }
+
 
     public static class GeminiResult {
         public int[] flatBoard;

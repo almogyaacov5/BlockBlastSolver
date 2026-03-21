@@ -42,58 +42,101 @@ public class Solver {
         List<int[][]> bestSequence = new ArrayList<>();
         int[] bestScore = {Integer.MAX_VALUE};
 
-        dfs(board, shapes, 0, new ArrayList<>(), bestSequence, bestScore);
+        // חדש: נשמור גם אילו צורות הונחו בפועל עבור הפתרון הטוב ביותר
+        boolean[] bestPlacedFlags = {false}; // placeholder כדי שנוכל להעביר reference
+        List<Boolean> bestPlacedList = new ArrayList<>();
 
-        if (!bestSequence.isEmpty()) {
-            result.success = true;
+        dfs(
+                board,
+                shapes,
+                0,
+                new ArrayList<>(),
+                new ArrayList<>(),      // currentPlaced
+                bestSequence,
+                bestScore,
+                bestPlacedList
+        );
 
-            // בונה את רצף השלבים לתצוגה
-            int[][] currentBoard = flatTo2D(flatBoard);
+        // בדיקה בסוף ה‑DFS: כל הצורות חייבות להיות הונחו (ללא skip) כדי שנסמן success
+        if (!bestSequence.isEmpty() && !bestPlacedList.isEmpty()) {
+            boolean allPlaced = true;
+            for (Boolean b : bestPlacedList) {
+                if (!b) {
+                    allPlaced = false;
+                    break;
+                }
+            }
 
-            for (int step = 0; step < bestSequence.size(); step++) {
-                int[][] stepBoard = bestSequence.get(step);
+            if (allPlaced) {
+                result.success = true;
 
-                // בונה displayBoard עם ערכים 0/1/2/3
-                int[] displayBoard = new int[64];
-                for (int r = 0; r < 8; r++) {
-                    for (int c = 0; c < 8; c++) {
-                        int prev = currentBoard[r][c];
-                        int next = stepBoard[r][c];
+                // בונה את רצף השלבים לתצוגה
+                int[][] currentBoard = flatTo2D(flatBoard);
 
-                        if (prev == 1 && next == 1) {
-                            displayBoard[r * 8 + c] = 1; // קיים ולא שונה
-                        } else if (prev == 0 && next == 1) {
-                            displayBoard[r * 8 + c] = 2; // חדש (הונח)
-                        } else if (prev == 1 && next == 0) {
-                            displayBoard[r * 8 + c] = 3; // נמחק (שורה/עמודה נוקתה)
-                        } else {
-                            displayBoard[r * 8 + c] = 0; // ריק
+                for (int step = 0; step < bestSequence.size(); step++) {
+                    int[][] stepBoard = bestSequence.get(step);
+
+                    // בונה displayBoard עם ערכים 0/1/2/3
+                    int[] displayBoard = new int[64];
+                    for (int r = 0; r < 8; r++) {
+                        for (int c = 0; c < 8; c++) {
+                            int prev = currentBoard[r][c];
+                            int next = stepBoard[r][c];
+
+                            if (prev == 1 && next == 1) {
+                                displayBoard[r * 8 + c] = 1; // קיים ולא שונה
+                            } else if (prev == 0 && next == 1) {
+                                displayBoard[r * 8 + c] = 2; // חדש (הונח)
+                            } else if (prev == 1 && next == 0) {
+                                displayBoard[r * 8 + c] = 3; // נמחק (שורה/עמודה נוקתה)
+                            } else {
+                                displayBoard[r * 8 + c] = 0; // ריק
+                            }
                         }
                     }
+                    result.steps.add(displayBoard);
+                    currentBoard = stepBoard;
                 }
-                result.steps.add(displayBoard);
-                currentBoard = stepBoard;
             }
         }
 
         return result;
     }
 
+    /**
+     * dfs מורחב:
+     * currentPlaced – רשימה בוליאנית המקבילה ל-currentSequence, מסמנת האם הצורה
+     * בשלב הזה באמת הונחה (true) או שזו צורה שדילגנו עליה (false).
+     */
     private static void dfs(
             int[][] board,
             List<Shape> shapes,
             int shapeIndex,
             List<int[][]> currentSequence,
+            List<Boolean> currentPlaced,
             List<int[][]> bestSequence,
-            int[] bestScore) {
+            int[] bestScore,
+            List<Boolean> bestPlacedList) {
 
         if (shapeIndex == shapes.size()) {
+            // נבדוק רק רצפים שבהם כל הצורות הונחו בפועל (אין skip)
+            if (currentPlaced.size() != shapes.size()) {
+                return;
+            }
+            for (Boolean b : currentPlaced) {
+                if (!b) {
+                    return; // יש skip – לא נחשב כפיתרון תקין
+                }
+            }
+
             int score = countBlocks(board);
             if (score < bestScore[0]) {
                 bestScore[0] = score;
                 bestSequence.clear();
-                for (int[][] b : currentSequence) {
-                    bestSequence.add(copyBoard(b));
+                bestPlacedList.clear();
+                for (int i = 0; i < currentSequence.size(); i++) {
+                    bestSequence.add(copyBoard(currentSequence.get(i)));
+                    bestPlacedList.add(currentPlaced.get(i));
                 }
             }
             return;
@@ -108,15 +151,23 @@ public class Solver {
                     placed = true;
                     int[][] newBoard = placeAndClear(board, shape, r, c);
                     currentSequence.add(newBoard);
-                    dfs(newBoard, shapes, shapeIndex + 1, currentSequence, bestSequence, bestScore);
+                    currentPlaced.add(Boolean.TRUE); // צורה זו הונחה בפועל
+                    dfs(newBoard, shapes, shapeIndex + 1, currentSequence, currentPlaced,
+                            bestSequence, bestScore, bestPlacedList);
                     currentSequence.remove(currentSequence.size() - 1);
+                    currentPlaced.remove(currentPlaced.size() - 1);
                 }
             }
         }
 
-        // אם לא ניתן להניח את הצורה, ממשיכים לצורה הבאה
+        // אם לא ניתן להניח את הצורה, מסמנים skip בצורה explicit
         if (!placed) {
-            dfs(board, shapes, shapeIndex + 1, currentSequence, bestSequence, bestScore);
+            // מסמנים שלא הונחה צורה בשלב הזה
+            currentPlaced.add(Boolean.FALSE);
+            // לא משנים את הלוח
+            dfs(board, shapes, shapeIndex + 1, currentSequence, currentPlaced,
+                    bestSequence, bestScore, bestPlacedList);
+            currentPlaced.remove(currentPlaced.size() - 1);
         }
     }
 
