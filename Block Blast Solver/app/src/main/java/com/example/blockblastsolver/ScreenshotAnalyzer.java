@@ -49,22 +49,15 @@ public class ScreenshotAnalyzer {
 
             String prompt = "This is a Block Blast puzzle game screenshot.\n"
                     + "TASK 1 - Read the 8x8 board (upper dark grid):\n"
-                    + "- The board has 8 columns and 8 rows\n"
-                    + "- 1 = colored block (purple/blue/green), 0 = empty dark cell\n"
-                    + "- Count cells carefully left to right, top to bottom\n\n"
+                    + "- The board has 8 columns and 8 rows.\n"
+                    + "- 1 = colored block, 0 = empty dark cell.\n\n"
                     + "TASK 2 - Read the 3 pieces at the bottom of the screen:\n"
-                    + "- There are exactly 3 separate piece shapes below the board\n"
-                    + "- Piece 1 is on the LEFT side\n"
-                    + "- Piece 2 is in the CENTER\n"
-                    + "- Piece 3 is on the RIGHT side\n"
-                    + "- For each piece, count EXACTLY how many rows and columns it has\n"
-                    + "- The LEFT piece is EXACTLY a 2x2 square: only 2 rows and 2 columns, all 4 cells filled: [[1,1],[1,1]]\n"
-                    + "- The CENTER piece looks like an L-shape: top row has 2 blocks, then 1 block below-right\n"
-                    + "- The RIGHT piece looks like a 2x3 rectangle (2 rows, 3 columns)\n\n"
-                    + "Return ONLY this JSON format, no explanation:\n"
-                    + "{\"board\":[[8 values],[8 values],[8 values],[8 values],[8 values],[8 values],[8 values],[8 values]],"
-                    + "\"pieces\":[left_piece_2d_array, center_piece_2d_array, right_piece_2d_array]}";
-
+                    + "- There are exactly 3 separate piece shapes below the board (Left, Center, Right).\n"
+                    + "- Carefully look at each piece and determine its exact grid size (rows and columns).\n"
+                    + "- Convert each piece into a 2D array of 1s (colored block) and 0s (empty space in the grid bounds).\n"
+                    + "- Trim any completely empty rows or columns around the pieces.\n\n"
+                    + "Return ONLY this valid JSON format, no markdown formatting, no explanations:\n"
+                    + "{\"board\":[[8 values],...8 rows total...], \"pieces\":[left_piece_2d_array, center_piece_2d_array, right_piece_2d_array]}";
 
 
             JSONObject textPart = new JSONObject();
@@ -189,19 +182,44 @@ public class ScreenshotAnalyzer {
         int[] flatBoard = new int[64];
         int width = bitmap.getWidth();
         int height = bitmap.getHeight();
+
+        // מיקומים יחסיים (עובד מעולה לרוב מסכי הסמארטפונים המודרניים)
         int boardStartX = (int) (width * 0.05);
         int boardWidth  = (int) (width * 0.90);
         int boardStartY = (int) (height * 0.22);
-        int cellSize    = boardWidth / 8;
+
+        // חשוב: שימוש ב-float כדי למנוע הצטברות של שגיאות עיגול (Rounding errors)
+        float cellSize = boardWidth / 8f;
+
         for (int r = 0; r < 8; r++) {
             for (int c = 0; c < 8; c++) {
-                int pixelX = boardStartX + c * cellSize + cellSize / 2;
-                int pixelY = boardStartY + r * cellSize + cellSize / 2;
-                if (pixelX < width && pixelY < height) {
-                    int p = bitmap.getPixel(pixelX, pixelY);
-                    flatBoard[r * 8 + c] = (Color.red(p) > 80
-                            || Color.green(p) > 80 || Color.blue(p) > 80) ? 1 : 0;
+                // מציאת המרכז המדויק של התא הנוכחי
+                int centerX = (int) (boardStartX + (c * cellSize) + (cellSize / 2));
+                int centerY = (int) (boardStartY + (r * cellSize) + (cellSize / 2));
+
+                boolean isFilled = false;
+
+                // דוגמים אזור ברדיוס של 8 פיקסלים סביב המרכז (יוצר רשת דגימה קטנה)
+                // זה מונע מצב שבו נפלנו בדיוק על הצללה או חריץ שחור בתוך הבלוק
+                int sampleRadius = 8;
+
+                for (int y = centerY - sampleRadius; y <= centerY + sampleRadius; y += 4) {
+                    for (int x = centerX - sampleRadius; x <= centerX + sampleRadius; x += 4) {
+                        // מוודאים שאנחנו לא חורגים מגבולות התמונה
+                        if (x >= 0 && x < width && y >= 0 && y < height) {
+                            int p = bitmap.getPixel(x, y);
+                            // משבצות ריקות הן אפור-כהה. הבלוקים הרבה יותר בהירים.
+                            // העלינו קצת את הסף ל-90 כדי לסנן רעשים מהרקע
+                            if (Color.red(p) > 90 || Color.green(p) > 90 || Color.blue(p) > 90) {
+                                isFilled = true;
+                                break; // מצאנו צבע! אין טעם להמשיך לסרוק את התא הזה
+                            }
+                        }
+                    }
+                    if (isFilled) break;
                 }
+
+                flatBoard[r * 8 + c] = isFilled ? 1 : 0;
             }
         }
         return flatBoard;
@@ -214,15 +232,22 @@ public class ScreenshotAnalyzer {
         int startY = (int) (height * 0.72);
         int endY   = (int) (height * 0.95);
         int sectionWidth = width / 3;
+
+        // גודל בלוק משוער בתחתית המסך (בד"כ קטן יותר מבלוק בלוח עצמו)
+        int expectedBlockSize = (int) (width * 0.055);
+
         for (int i = 0; i < 3; i++) {
             int startX = i * sectionWidth;
             int endX   = startX + sectionWidth;
             int minX = width, maxX = 0, minY = height, maxY = 0;
             boolean found = false;
-            for (int y = startY; y < endY; y += 5) {
-                for (int x = startX; x < endX; x += 5) {
+
+            // מציאת ה-Bounding Box של הצורה
+            for (int y = startY; y < endY; y += 3) {
+                for (int x = startX; x < endX; x += 3) {
                     int p = bitmap.getPixel(x, y);
-                    if (Color.red(p) > 80 || Color.green(p) > 80 || Color.blue(p) > 80) {
+                    // סף רגישות נמוך יותר כדי לא להתבלבל מההצללות
+                    if (Color.red(p) > 90 || Color.green(p) > 90 || Color.blue(p) > 90) {
                         found = true;
                         if (x < minX) minX = x;
                         if (x > maxX) maxX = x;
@@ -231,28 +256,45 @@ public class ScreenshotAnalyzer {
                     }
                 }
             }
+
             if (found) {
-                int shapeW    = maxX - minX;
-                int shapeH    = maxY - minY;
-                int blockSize = Math.max(10, Math.max(shapeW, shapeH) / 5);
-                int cols      = Math.min(5, Math.round((float) shapeW / blockSize) + 1);
-                int rows      = Math.min(5, Math.round((float) shapeH / blockSize) + 1);
-                int[][] grid  = new int[rows][cols];
+                int shapeW = maxX - minX;
+                int shapeH = maxY - minY;
+
+                // חישוב מספר העמודות והשורות לפי הגודל הפיזי של הצורה חלקי גודל בלוק צפוי
+                int cols = Math.max(1, Math.round((float) shapeW / expectedBlockSize));
+                int rows = Math.max(1, Math.round((float) shapeH / expectedBlockSize));
+
+                // תיקון למקרי קצה של רווחים (Padding)
+                int actualBlockW = shapeW / cols;
+                int actualBlockH = shapeH / rows;
+
+                int[][] grid = new int[rows][cols];
                 for (int r = 0; r < rows; r++) {
                     for (int c = 0; c < cols; c++) {
-                        int pX = minX + c * blockSize + blockSize / 2;
-                        int pY = minY + r * blockSize + blockSize / 2;
+                        // דיגום מהמרכז המדויק של כל בלוק פוטנציאלי
+                        int pX = minX + (c * actualBlockW) + (actualBlockW / 2);
+                        int pY = minY + (r * actualBlockH) + (actualBlockH / 2);
+
                         if (pX <= maxX && pY <= maxY) {
                             int p = bitmap.getPixel(pX, pY);
-                            if (Color.red(p) > 80 || Color.green(p) > 80 || Color.blue(p) > 80)
+                            if (Color.red(p) > 90 || Color.green(p) > 90 || Color.blue(p) > 90) {
                                 grid[r][c] = 1;
+                            } else {
+                                grid[r][c] = 0;
+                            }
                         }
                     }
                 }
                 shapes.add(new Shape(grid));
             }
         }
-        if (shapes.isEmpty()) shapes.add(new Shape(new int[][]{{1}}));
+
+        // אם לא נמצאו צורות, נחזיר צורה ריקה כדי למנוע קריסות
+        if (shapes.isEmpty()) {
+            shapes.add(new Shape(new int[][]{{1}}));
+        }
+
         return shapes;
     }
 
